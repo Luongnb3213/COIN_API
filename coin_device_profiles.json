@@ -1,0 +1,61 @@
+[
+  {
+    "_file": "app-analytics-services.before_register.har",
+    "device_id": "8a4821af-662f-40e4-b32d-089c8adca309",
+    "globalSetting": "GXHVF62r0HzkJ8wKGhRhfIREmaGgdFM6F/KkOAyoS1o=",
+    "headers": {
+      "accept": "application/json",
+      "x-sgc-client-id": "00001",
+      "x-sgc-device-os": "iOS/26.6.2",
+      "priority": "u=3, i",
+      "accept-language": "vi-VN;q=1.0",
+      "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 - SGCAPP",
+      "x-sgc-device-model": "iPhone",
+      "x-sgc-app-version": "1.76.0"
+    }
+  },
+  {
+    "_file": "app-analytics-services.phone_giang_huy.har",
+    "device_id": "bbbdaf88-0024-4280-bfeb-7e6efd40cb22",
+    "globalSetting": "8yCvyK30ybuuv4hFqWer3FWrmEizyn9ZwUQVsUjQ70Q=",
+    "headers": {
+      "x-sgc-device-model": "iPhone",
+      "accept": "application/json",
+      "x-sgc-client-id": "00001",
+      "x-sgc-device-os": "iOS/26.6",
+      "priority": "u=3, i",
+      "accept-language": "vi-VN;q=1.0",
+      "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 - SGCAPP",
+      "x-sgc-app-version": "1.76.0"
+    }
+  },
+  {
+    "_file": "app-analytics-services.iphone_7.har",
+    "device_id": "0ef05e7c-bc2e-4fbd-9edb-d5c5fa799538",
+    "globalSetting": "qoaFfBla8JTzIMbsI4LY0WoQ13ZeoBS3aXQgSVOsmlc=",
+    "headers": {
+      "x-sgc-device-model": "iPhone",
+      "accept": "application/json",
+      "x-sgc-client-id": "00001",
+      "x-sgc-device-os": "iOS/15.8.2",
+      "accept-language": "en-VN;q=1.0, vi-VN;q=0.9",
+      "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_8_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 - SGCAPP",
+      "x-sgc-app-version": "1.56.0"
+    }
+  },
+  {
+    "_file": "app-analytics-services.iphone_11.har",
+    "device_id": "5c386228-c4b4-4115-8d91-46ce36798ef4",
+    "globalSetting": "Z0Lfs9gQE2CAOgdvlneMrbdNm78Mqh6xBye1mxwo7YQ=",
+    "headers": {
+      "x-sgc-device-model": "iPhone",
+      "accept": "application/json",
+      "x-sgc-client-id": "00001",
+      "x-sgc-device-os": "iOS/26.2.1",
+      "priority": "u=3, i",
+      "accept-language": "vi-VN;q=1.0",
+      "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 - SGCAPP",
+      "x-sgc-app-version": "1.76.0"
+    }
+  }
+]
