@@ -1,5 +1,5 @@
 {
-  "xlsx_path": "/Users/macbook/Downloads/COIN_API_run_test_katakana_fixed.xlsx",
+  "xlsx_path": "/Users/macbook/Downloads/coin_excel_lily.xlsx",
   "active_sheet": "Accounts",
   "worker_count": 1,
   "run_limit": 1,
@@ -9,7 +9,7 @@
   "coin_http_headers": {},
   "fuyoura_api_key": "X1nRBdIuOw907o5e4Oytb9GnCouPtVlbK7UTXrIRstmFrm8M",
   "fuyoura_base_url": "https://fuyoura.com/api/otp/v1",
-  "fuyoura_country": "japan",
+  "fuyoura_country": "jpn",
   "fuyoura_project": "70035",
   "otp_wait_timeout": 120,
   "otp_poll_interval": 2,

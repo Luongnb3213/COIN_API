@@ -39,10 +39,21 @@ class FuyouraTemporaryError(FuyouraError):
 
 
 def normalize_phone(value: str) -> str:
-    """Fuyoura trả số Nhật dạng '81XXXXXXXXXX'; COIN cần dạng local '0XXXXXXXXX'."""
+    """Chuẩn hoá số Nhật của Fuyoura về dạng local COIN cần: '0XXXXXXXXXX'.
+
+    Fuyoura có thể trả nhiều dạng cho jpn:
+      - '9059678270'   (di động, bỏ số 0 đầu)      -> '09059678270'
+      - '819059678270' (kèm mã quốc gia 81)         -> '09059678270'
+      - '00819059678270' (mã quốc tế 00)            -> '09059678270'
+      - '09059678270'  (đã đúng local)              -> giữ nguyên
+    """
     number = re.sub(r"\D", "", str(value or ""))
-    if number.startswith("81") and len(number) == 12:
-        number = "0" + number[2:]
+    if number.startswith("00"):
+        number = number[2:]
+    if number.startswith("81") and not number.startswith("0"):
+        number = number[2:]
+    if number and not number.startswith("0"):
+        number = "0" + number
     return number
 
 
