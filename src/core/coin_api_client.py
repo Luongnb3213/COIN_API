@@ -42,6 +42,12 @@ IOS_VERSIONS = [
     "26.6",
 ]
 
+# Map mã lỗi nghiệp vụ của COIN -> thông báo tiếng Việt cho error_details.
+COIN_ERROR_MESSAGES = {
+    # この電話番号はすでに他のアカウントで使われています。
+    "10085": "Số điện thoại này đã được sử dụng bởi một tài khoản khác",
+}
+
 
 class CoinApiError(RuntimeError):
     def __init__(self, step_status: str, message: str, *, final_status: str = "FAILED") -> None:
@@ -469,11 +475,13 @@ class CoinApiClient:
             ) from exc
 
         if not 200 <= status_code < 300:
+            code = str(CoinApiClient._pick(data, "code", "errorCode") or "").strip()
             message = CoinApiClient._pick(data, "message", "error", "errorMessage", "detail") or text
             final_status = "RETRY" if status_code in {408, 429, 500, 502, 503, 504} else "FAIL_NO_RETRY"
+            # Ưu tiên thông báo tiếng Việt đã map theo mã lỗi nghiệp vụ.
             raise CoinApiError(
                 step_status,
-                f"HTTP {status_code}: {message}",
+                COIN_ERROR_MESSAGES.get(code) or f"HTTP {status_code}: {message}",
                 final_status=final_status,
             )
 
