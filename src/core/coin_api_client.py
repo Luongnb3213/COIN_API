@@ -200,7 +200,7 @@ class CoinApiClient:
             self.headers.get("cookie", "<chưa có>"),
         )
 
-    def register_account(self, account: dict, progress) -> CoinRegisterResult:
+    def register_account(self, account: dict, progress, on_phone=None) -> CoinRegisterResult:
         payload = build_register_payload(account)
         self._validate_account(account, payload)
         log.info("Bắt đầu flow register (Fuyoura thuê số).")
@@ -214,6 +214,13 @@ class CoinApiClient:
             raise CoinApiError("SMS_REQUEST_FAILED", f"FUYOURA_ERROR: {exc}") from exc
         order_id = rented["order"]
         payload["phoneNumber"] = rented["number"]
+        # Ghi số vừa thuê ra Excel NGAY (trước SMS request). Nhờ vậy dù flow sau
+        # đó lỗi/bị dừng, số vẫn được lưu lại để biết số nào đã dùng.
+        if on_phone:
+            try:
+                on_phone(rented["number"])
+            except Exception:
+                log.debug("on_phone callback lỗi, bỏ qua.", exc_info=True)
         masked_phone = mask_phone(payload["phoneNumber"])
         log.info(
             "[%s] Fuyoura cấp số (order=%s, country=%s, project=%s).",

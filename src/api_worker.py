@@ -64,7 +64,12 @@ class CoinRegistrationWorker:
                     step_status = step
                     self.sheets_manager.update_account(row, {"step_status": step})
 
-                result = client.register_account(account, progress)
+                def report_phone(number: str) -> None:
+                    # Fuyoura vừa cấp số -> ghi ngay vào cột phone của dòng này,
+                    # để cả khi register lỗi vẫn biết số đã thuê.
+                    self.sheets_manager.update_account(row, {"phone": number})
+
+                result = client.register_account(account, progress, report_phone)
                 final_status = "SUCCESS"
                 registered_at = self.sheets_manager.success_stamp()
                 success_data = {
