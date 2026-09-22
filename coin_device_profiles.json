@@ -1,20 +1,5 @@
 [
   {
-    "_file": "app-analytics-services.before_register.har",
-    "device_id": "8a4821af-662f-40e4-b32d-089c8adca309",
-    "globalSetting": "GXHVF62r0HzkJ8wKGhRhfIREmaGgdFM6F/KkOAyoS1o=",
-    "headers": {
-      "accept": "application/json",
-      "x-sgc-client-id": "00001",
-      "x-sgc-device-os": "iOS/26.6.2",
-      "priority": "u=3, i",
-      "accept-language": "vi-VN;q=1.0",
-      "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 - SGCAPP",
-      "x-sgc-device-model": "iPhone",
-      "x-sgc-app-version": "1.76.0"
-    }
-  },
-  {
     "_file": "app-analytics-services.phone_giang_huy.har",
     "device_id": "bbbdaf88-0024-4280-bfeb-7e6efd40cb22",
     "globalSetting": "8yCvyK30ybuuv4hFqWer3FWrmEizyn9ZwUQVsUjQ70Q=",

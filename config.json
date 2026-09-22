@@ -16,5 +16,5 @@
   "use_proxy": true,
   "proxy_failure_threshold": 3,
   "request_timeout": 30,
-  "account_cooldown_seconds": 0
+  "account_cooldown_seconds": 30
 }
