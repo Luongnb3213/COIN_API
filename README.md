@@ -31,6 +31,15 @@ proxy_id
 coin_id
 customer_status
 pcard_status
+gift_code_1
+gift_code_2
+gift1_status
+gift2_status
+card_number
+card_name
+card_expiry
+security_code
+card_url
 registered_at
 ```
 
@@ -68,11 +77,25 @@ SMS_REQUEST_OK
 SMS_VERIFY_OK
 PIN_CHECK_OK
 REGISTER_OK
+GIFT_CODE_1_OK
+GIFT_CODE_2_OK
+PCARD_PIN_VERIFY_OK
+PCARD_WEBVIEW_OTP_OK
+PCARD_WEBVIEW_AUTH_OK
+PCARD_CARD_INFO_OK
 ACCOUNT_ACTIVE
 SMS_REQUEST_FAILED
 SMS_VERIFY_FAILED
 PIN_CHECK_FAILED
 REGISTER_FAILED
+GIFT_CODE_1_FAILED
+GIFT_CODE_2_FAILED
+PCARD_PIN_VERIFY_FAILED
+PCARD_WEBVIEW_OTP_FAILED
+PCARD_WEBVIEW_LOGIN_FAILED
+PCARD_WEBVIEW_AUTH_FAILED
+PCARD_CARD_URL_FAILED
+PCARD_CARD_HTML_FAILED
 ACCOUNT_CHECK_FAILED
 VALIDATION_FAILED
 ```
@@ -89,6 +112,23 @@ POST /v3/customers/register
 GET  /v2/customers/status
 GET  /v4/customers?configurationMode=0
 ```
+
+Sau `REGISTER_OK`, tool chạy thêm luồng gift/card:
+
+```text
+POST /transactions/gift-codes/grant                # gift_code_1
+POST /transactions/gift-codes/grant                # gift_code_2
+POST /authentications/pin/verify                   # lấy PCARD token
+POST /authentications/pcard-webview-otp/issue      # lấy otpCode webview
+POST https://web.coinplus-prepaid.jp/login
+POST https://web.coinplus-prepaid.jp/authenticate
+GET  https://web.coinplus-prepaid.jp/getCardNum
+GET  https://prepaidcube-multi.paycierge.com/05025/card?code=...&cc=05025
+```
+
+`tocapi.coinplus.jp` dùng header app và `XSRF-TOKEN`. Webview dùng cookie
+`SESSION` riêng do server cấp qua `Set-Cookie`; Paycierge lấy HTML card bằng URL
+`code=...&cc=05025` từ `/getCardNum`.
 
 Tool luôn dùng OTPBase để chốt mốc SMS trước khi request mã, rồi chờ OTP mới
 của đúng số điện thoại. `pin` là `simpleAuthenticationCode` dùng cho bước PIN
@@ -135,8 +175,11 @@ chung của flow:
   "use_proxy": true,
   "proxy_failure_threshold": 3,
   "coin_screen_id": "3",
-  "coin_cms_terms_of_service_set_id": "sgc-ts-4020"
+  "coin_cms_terms_of_service_set_id": "sgc-ts-4020",
+  "gift_codes": []
 }
 ```
 
 Nếu cần override/thêm header riêng, thêm vào `coin_http_headers`.
+Nếu không muốn điền gift code theo từng dòng Excel, có thể cấu hình 2 code dùng
+chung trong `gift_codes`.
