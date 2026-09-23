@@ -83,6 +83,13 @@ class CoinRegistrationWorker:
                     "coin_id": result.coin_id,
                     "customer_status": result.customer_status,
                     "pcard_status": result.pcard_status,
+                    "gift1_status": result.gift1_status,
+                    "gift2_status": result.gift2_status,
+                    "card_number": result.card_number,
+                    "card_name": result.card_name,
+                    "card_expiry": result.card_expiry,
+                    "security_code": result.security_code,
+                    "card_url": result.card_url,
                     "registered_at": registered_at,
                 }
                 self.sheets_manager.update_account(row, success_data)

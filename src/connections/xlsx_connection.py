@@ -29,6 +29,15 @@ ACCOUNT_HEADERS = [
     "coin_id",
     "customer_status",
     "pcard_status",
+    "gift_code_1",
+    "gift_code_2",
+    "gift1_status",
+    "gift2_status",
+    "card_number",
+    "card_name",
+    "card_expiry",
+    "security_code",
+    "card_url",
     "registered_at",
 ]
 PROXIES_HEADERS = ["proxy", "status", "proxy_id"]
@@ -352,6 +361,15 @@ def create_template(path: Path) -> None:
             "",
             "",
             "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
         ]
     )
     XlsxConnection._format_header(ws)
@@ -377,7 +395,16 @@ def create_template(path: Path) -> None:
         "L": 24,
         "M": 18,
         "N": 14,
-        "O": 20,
+        "O": 18,
+        "P": 18,
+        "Q": 22,
+        "R": 22,
+        "S": 26,
+        "T": 20,
+        "U": 14,
+        "V": 14,
+        "W": 60,
+        "X": 20,
     }
     for sheet in (ws, ws_success):
         for col, width in widths.items():

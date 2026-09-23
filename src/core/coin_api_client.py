@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import gzip
 import json
 import random
 import re
 import uuid
 from dataclasses import dataclass
+from html import unescape
+from http.cookiejar import CookieJar
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlparse
-from urllib.request import ProxyHandler, Request, build_opener, urlopen
+from urllib.request import HTTPCookieProcessor, ProxyHandler, Request, build_opener, urlopen
 
 from src import config
 from src.core.fuyoura_client import FuyouraClient, FuyouraError
@@ -66,6 +69,22 @@ class CoinRegisterResult:
     customer_status: str
     pcard_status: str
     phone_number: str = ""
+    gift1_status: str = ""
+    gift2_status: str = ""
+    card_number: str = ""
+    card_name: str = ""
+    card_expiry: str = ""
+    security_code: str = ""
+    card_url: str = ""
+
+
+@dataclass
+class CoinCardInfo:
+    card_number: str = ""
+    card_name: str = ""
+    card_expiry: str = ""
+    security_code: str = ""
+    card_url: str = ""
 
 
 def build_register_payload(account: dict) -> dict[str, Any]:
@@ -195,10 +214,16 @@ class CoinApiClient:
         self.headers.update(config.COIN_HTTP_HEADERS)
         self.proxy = proxy or {}
         self.opener = None
+        self.web_cookie_jar = CookieJar()
+        self.web_opener = None
         if self.proxy:
             proxy_url = urllib_proxy_url(self.proxy)
-            self.opener = build_opener(ProxyHandler({"http": proxy_url, "https": proxy_url}))
+            proxy_handler = ProxyHandler({"http": proxy_url, "https": proxy_url})
+            self.opener = build_opener(proxy_handler)
+            self.web_opener = build_opener(proxy_handler, HTTPCookieProcessor(self.web_cookie_jar))
             log.info("Dùng proxy cho flow: %s", self.proxy.get("server") or self.proxy.get("raw"))
+        else:
+            self.web_opener = build_opener(HTTPCookieProcessor(self.web_cookie_jar))
         log.info(
             "Tạo header flow: device_id=%s os=%s cookie=%s",
             self.headers.get("x-sgc-device-id", "")[:8] + "...",
@@ -301,6 +326,9 @@ class CoinApiClient:
         progress("REGISTER_OK")
         log.info("[%s] Register OK.", masked_phone)
 
+        gift_statuses = self._grant_gift_codes(account, str(register_token), progress, masked_phone)
+        card_info = self._fetch_card_info(str(register_token), payload["simpleAuthenticationCode"], progress, masked_phone)
+
         log.info("[%s] Check customer status.", masked_phone)
         status_data = self._get_json(
             "/v2/customers/status",
@@ -331,7 +359,166 @@ class CoinApiClient:
             customer_status=str(customer_status),
             pcard_status=str(pcard_status),
             phone_number=str(payload["phoneNumber"]),
+            gift1_status=gift_statuses[0],
+            gift2_status=gift_statuses[1],
+            card_number=card_info.card_number,
+            card_name=card_info.card_name,
+            card_expiry=card_info.card_expiry,
+            security_code=card_info.security_code,
+            card_url=card_info.card_url,
         )
+
+    def _grant_gift_codes(self, account: dict, bearer_token: str, progress, masked_phone: str) -> tuple[str, str]:
+        codes = self._gift_codes_for_account(account)
+        statuses = ["SKIPPED_NO_CODE", "SKIPPED_NO_CODE"]
+        if not any(codes[:2]):
+            log.info("[%s] Không có gift_code_1/gift_code_2, bỏ qua grant gift code.", masked_phone)
+            return statuses[0], statuses[1]
+        for index, gift_code in enumerate(codes[:2], start=1):
+            if not gift_code:
+                continue
+            log.info("[%s] Grant gift code #%s.", masked_phone, index)
+            self._post_json(
+                "/transactions/gift-codes/grant",
+                {"giftCode": gift_code},
+                bearer_token=bearer_token,
+                step_status=f"GIFT_CODE_{index}_FAILED",
+            )
+            statuses[index - 1] = "OK"
+            progress(f"GIFT_CODE_{index}_OK")
+            log.info("[%s] Gift code #%s OK.", masked_phone, index)
+        return statuses[0], statuses[1]
+
+    @staticmethod
+    def _gift_codes_for_account(account: dict) -> list[str]:
+        codes = [
+            str(account.get("gift_code_1") or "").strip(),
+            str(account.get("gift_code_2") or "").strip(),
+        ]
+        fallback = list(getattr(config, "COIN_GIFT_CODES", []) or [])
+        for index in range(2):
+            if not codes[index] and index < len(fallback):
+                codes[index] = str(fallback[index] or "").strip()
+        return codes
+
+    def _fetch_card_info(self, register_token: str, pin: str, progress, masked_phone: str) -> CoinCardInfo:
+        log.info("[%s] Verify PIN for PCARD webview.", masked_phone)
+        pin_data = self._post_json(
+            "/authentications/pin/verify",
+            {"functionCode": "PCARD", "simpleAuthenticationCode": str(pin)},
+            bearer_token=register_token,
+            step_status="PCARD_PIN_VERIFY_FAILED",
+        )
+        pcard_token = self._pick(pin_data, "authenticationToken")
+        if not pcard_token:
+            raise CoinApiError("PCARD_PIN_VERIFY_FAILED", "API không trả về PCARD authenticationToken.")
+        progress("PCARD_PIN_VERIFY_OK")
+
+        log.info("[%s] Issue PCARD webview OTP.", masked_phone)
+        otp_data = self._post_empty_json(
+            "/authentications/pcard-webview-otp/issue",
+            bearer_token=str(pcard_token),
+            step_status="PCARD_WEBVIEW_OTP_FAILED",
+        )
+        otp_code = str(self._pick(otp_data, "otpCode") or "").strip()
+        login_url = str(self._pick(otp_data, "pcardWebViewUrl") or "https://web.coinplus-prepaid.jp/login").strip()
+        redirect_url = str(self._pick(otp_data, "redirectUrl") or "/topMenu").strip()
+        if not otp_code:
+            raise CoinApiError("PCARD_WEBVIEW_OTP_FAILED", "API không trả về otpCode.")
+        progress("PCARD_WEBVIEW_OTP_OK")
+
+        log.info("[%s] Webview login.", masked_phone)
+        login_body = urlencode({"redirectUrl": redirect_url, "otpCode": otp_code}).encode("utf-8")
+        login_status, login_html = self._web_request(
+            login_url,
+            method="POST",
+            body=login_body,
+            headers=self._webview_headers(
+                accept="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                content_type="application/x-www-form-urlencoded",
+                origin="null",
+                sec_fetch_site="none",
+                sec_fetch_mode="navigate",
+                sec_fetch_dest="document",
+            ),
+            step_status="PCARD_WEBVIEW_LOGIN_FAILED",
+            log_body=False,
+        )
+        if not 200 <= login_status < 300:
+            raise CoinApiError("PCARD_WEBVIEW_LOGIN_FAILED", f"HTTP {login_status}: login webview thất bại.")
+        form_fields = self._extract_form_inputs(login_html)
+        if not form_fields:
+            raise CoinApiError("PCARD_WEBVIEW_LOGIN_FAILED", "Không parse được form authenticate từ HTML login.")
+        if not any(name == "otpCode" and value == otp_code for name, value in form_fields):
+            form_fields.append(("otpCode", otp_code))
+
+        authenticate_url = urljoin(login_url, "/authenticate")
+        log.info("[%s] Webview authenticate.", masked_phone)
+        auth_status, _ = self._web_request(
+            authenticate_url,
+            method="POST",
+            body=urlencode(form_fields).encode("utf-8"),
+            headers=self._webview_headers(
+                accept="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                content_type="application/x-www-form-urlencoded",
+                origin="https://web.coinplus-prepaid.jp",
+                referer=login_url,
+                sec_fetch_site="same-origin",
+                sec_fetch_mode="navigate",
+                sec_fetch_dest="document",
+            ),
+            step_status="PCARD_WEBVIEW_AUTH_FAILED",
+            log_body=False,
+        )
+        if not 200 <= auth_status < 400:
+            raise CoinApiError("PCARD_WEBVIEW_AUTH_FAILED", f"HTTP {auth_status}: authenticate webview thất bại.")
+        progress("PCARD_WEBVIEW_AUTH_OK")
+
+        log.info("[%s] Get card URL from webview.", masked_phone)
+        card_url_status, card_url_text = self._web_request(
+            "https://web.coinplus-prepaid.jp/getCardNum",
+            method="GET",
+            headers=self._webview_headers(
+                accept="*/*",
+                referer="https://web.coinplus-prepaid.jp/topMenu",
+                sec_fetch_site="same-origin",
+                sec_fetch_mode="cors",
+                sec_fetch_dest="empty",
+            ),
+            step_status="PCARD_CARD_URL_FAILED",
+            log_body=False,
+        )
+        if not 200 <= card_url_status < 300:
+            raise CoinApiError("PCARD_CARD_URL_FAILED", f"HTTP {card_url_status}: getCardNum thất bại.")
+        try:
+            card_url = str(json.loads(card_url_text).get("url") or "").strip()
+        except ValueError as exc:
+            raise CoinApiError("PCARD_CARD_URL_FAILED", f"getCardNum không trả JSON hợp lệ: {card_url_text[:300]}") from exc
+        if not card_url:
+            raise CoinApiError("PCARD_CARD_URL_FAILED", "getCardNum không trả url.")
+
+        log.info("[%s] Fetch Paycierge card HTML.", masked_phone)
+        card_status, card_html = self._web_request(
+            card_url,
+            method="GET",
+            headers=self._paycierge_headers(),
+            step_status="PCARD_CARD_HTML_FAILED",
+            log_body=False,
+        )
+        if not 200 <= card_status < 300:
+            raise CoinApiError("PCARD_CARD_HTML_FAILED", f"HTTP {card_status}: lấy HTML card thất bại.")
+        card_info = self._parse_card_html(card_html, card_url)
+        if not card_info.card_number or not card_info.security_code:
+            raise CoinApiError("PCARD_CARD_HTML_FAILED", "HTML card không có card_number/security_code.")
+        progress("PCARD_CARD_INFO_OK")
+        log.info(
+            "[%s] Card info OK: number_len=%s expiry=%s name=%s.",
+            masked_phone,
+            len(card_info.card_number.replace(" ", "")),
+            card_info.card_expiry,
+            card_info.card_name,
+        )
+        return card_info
 
     @staticmethod
     def _otp_client() -> FuyouraClient:
@@ -409,6 +596,188 @@ class CoinApiClient:
             update_cookie=update_cookie,
         )
         return self._parse_response(status_code, response_text, step_status)
+
+    def _post_empty_json(self, path: str, *, bearer_token: str, step_status: str) -> dict[str, Any]:
+        status_code, response_text = self._request(
+            self._url(path),
+            method="POST",
+            bearer_token=bearer_token,
+            step_status=step_status,
+        )
+        return self._parse_response(status_code, response_text, step_status)
+
+    def _web_request(
+        self,
+        url: str,
+        *,
+        method: str,
+        headers: dict[str, str],
+        step_status: str,
+        body: bytes | None = None,
+        log_body: bool = True,
+    ) -> tuple[int, str]:
+        request = Request(url, data=body, headers=headers, method=method)
+        label = self._web_log_label(url)
+        log.info("WEB %s %s bắt đầu.", method, label)
+        log.info("WEB %s %s request headers: %s", method, label, json.dumps(headers, ensure_ascii=False))
+        if body is not None:
+            log.info("WEB %s %s request body: %s", method, label, body.decode("utf-8", errors="replace"))
+        else:
+            log.info("WEB %s %s request body: <empty>", method, label)
+        try:
+            opener = self.web_opener or build_opener(HTTPCookieProcessor(self.web_cookie_jar))
+            with opener.open(request, timeout=config.REQUEST_TIMEOUT) as response:
+                text = self._read_response_text(response)
+                log.info("WEB %s %s -> %s.", method, label, response.status)
+                log.info("WEB %s %s response headers: %s", method, label, json.dumps(dict(response.headers.items()), ensure_ascii=False))
+                if log_body:
+                    log.info("WEB %s %s response body: %s", method, label, _loggable_body(text) if text else "<empty>")
+                else:
+                    log.info("WEB %s %s response body: <hidden len=%s>", method, label, len(text))
+                return response.status, text
+        except HTTPError as exc:
+            text = self._read_response_text(exc)
+            log.warning("WEB %s %s -> %s.", method, label, exc.code)
+            log.warning("WEB %s %s response headers: %s", method, label, json.dumps(dict(exc.headers.items()), ensure_ascii=False))
+            if log_body:
+                log.warning("WEB %s %s response body: %s", method, label, _loggable_body(text) if text else "<empty>")
+            else:
+                log.warning("WEB %s %s response body: <hidden len=%s>", method, label, len(text))
+            return exc.code, text
+        except URLError as exc:
+            log.warning("WEB %s %s lỗi mạng: %s", method, label, exc.reason)
+            raise CoinApiError(step_status, f"NETWORK_ERROR: {exc.reason}") from exc
+        except OSError as exc:
+            log.warning("WEB %s %s lỗi mạng: %s", method, label, exc)
+            raise CoinApiError(step_status, f"NETWORK_ERROR: {exc}") from exc
+
+    @staticmethod
+    def _web_log_label(url: str) -> str:
+        parsed = urlparse(url)
+        if parsed.netloc == "prepaidcube-multi.paycierge.com" and parsed.path.endswith("/card"):
+            return parsed.netloc + parsed.path + "?<redacted>"
+        return parsed.netloc + parsed.path + (f"?{parsed.query}" if parsed.query else "")
+
+    @staticmethod
+    def _read_response_text(response) -> str:
+        raw = response.read()
+        encoding = str(response.headers.get("Content-Encoding") or "").lower()
+        if "gzip" in encoding:
+            raw = gzip.decompress(raw)
+        charset = "utf-8"
+        content_type = str(response.headers.get("Content-Type") or "")
+        match = re.search(r"charset=([^;\s]+)", content_type, flags=re.I)
+        if match:
+            charset = match.group(1).strip("\"'")
+        return raw.decode(charset, errors="replace")
+
+    def _webview_headers(
+        self,
+        *,
+        accept: str,
+        content_type: str = "",
+        origin: str = "",
+        referer: str = "",
+        sec_fetch_site: str = "",
+        sec_fetch_mode: str = "",
+        sec_fetch_dest: str = "",
+    ) -> dict[str, str]:
+        headers = {
+            "User-Agent": self._webview_user_agent(),
+            "Accept": accept,
+            "Accept-Language": "vi-VN,vi;q=0.9",
+            "Priority": "u=0, i" if sec_fetch_mode == "navigate" else "u=3, i",
+        }
+        if content_type:
+            headers["Content-Type"] = content_type
+        if origin:
+            headers["Origin"] = origin
+        if referer:
+            headers["Referer"] = referer
+        if sec_fetch_site:
+            headers["Sec-Fetch-Site"] = sec_fetch_site
+        if sec_fetch_mode:
+            headers["Sec-Fetch-Mode"] = sec_fetch_mode
+        if sec_fetch_dest:
+            headers["Sec-Fetch-Dest"] = sec_fetch_dest
+        return headers
+
+    def _paycierge_headers(self) -> dict[str, str]:
+        return {
+            "User-Agent": self._webview_user_agent(),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Referer": "https://web.coinplus-prepaid.jp/",
+            "Sec-Fetch-Site": "cross-site",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Dest": "document",
+            "Accept-Language": "vi-VN,vi;q=0.9",
+            "Priority": "u=0, i",
+        }
+
+    def _webview_user_agent(self) -> str:
+        user_agent = str(self.headers.get("user-agent") or self.headers.get("User-Agent") or "")
+        if "SGCAPP-Webview" in user_agent:
+            return user_agent
+        if "Mobile/15E148 - SGCAPP" in user_agent:
+            return user_agent.replace("Mobile/15E148 - SGCAPP", "- SGCAPP-Webview")
+        return (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) - SGCAPP-Webview"
+        )
+
+    @staticmethod
+    def _extract_form_inputs(html_text: str) -> list[tuple[str, str]]:
+        fields: list[tuple[str, str]] = []
+        for tag_match in re.finditer(r"<input\b[^>]*>", html_text, flags=re.I):
+            attrs = {
+                key.lower(): unescape(value)
+                for key, value in re.findall(r"""([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*["']([^"']*)["']""", tag_match.group(0))
+            }
+            name = attrs.get("name")
+            if name:
+                fields.append((name, attrs.get("value", "")))
+        return fields
+
+    @staticmethod
+    def _parse_card_html(html_text: str, card_url: str) -> CoinCardInfo:
+        def extract_span(span_id: str) -> str:
+            match = re.search(
+                rf"""<span\b[^>]*id=["']{re.escape(span_id)}["'][^>]*>(.*?)</span>""",
+                html_text,
+                flags=re.I | re.S,
+            )
+            if not match:
+                return ""
+            return CoinApiClient._clean_html_text(match.group(1))
+
+        card_number = extract_span("copyNumber")
+        card_name = extract_span("copyCard")
+        card_expiry = extract_span("copyYkk")
+        security_code = extract_span("copySct")
+
+        if not card_number:
+            match = re.search(r"(\d{4}(?:&nbsp;|\s)+\d{4}(?:&nbsp;|\s)+\d{4}(?:&nbsp;|\s)+\d{4})", html_text)
+            card_number = CoinApiClient._clean_html_text(match.group(1)) if match else ""
+        if not card_expiry:
+            match = re.search(r"\b(\d{2}/\d{2})\b", html_text)
+            card_expiry = match.group(1) if match else ""
+        if not security_code:
+            match = re.search(r"""id=["']copySct["'][^>]*>\s*(\d{3,4})\s*<""", html_text, flags=re.I)
+            security_code = match.group(1) if match else ""
+
+        return CoinCardInfo(
+            card_number=card_number,
+            card_name=card_name,
+            card_expiry=card_expiry,
+            security_code=security_code,
+            card_url=card_url,
+        )
+
+    @staticmethod
+    def _clean_html_text(text: str) -> str:
+        clean = re.sub(r"<[^>]+>", " ", text)
+        clean = unescape(clean).replace("\xa0", " ")
+        return re.sub(r"\s+", " ", clean).strip()
 
     def _request(
         self,

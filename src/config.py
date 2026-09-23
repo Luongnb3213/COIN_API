@@ -37,6 +37,11 @@ COIN_DEVICE_PROFILES_PATH = Path(str(_get("coin_device_profiles_path", ROOT_DIR 
 REQUEST_TIMEOUT = max(5, int(_get("request_timeout", 30) or 30))
 ACCOUNT_COOLDOWN_SECONDS = max(0, int(_get("account_cooldown_seconds", 0) or 0))
 COIN_HTTP_HEADERS = dict(_get("coin_http_headers", {}) or {})
+COIN_GIFT_CODES = [
+    str(value).strip()
+    for value in (_get("gift_codes", []) or [])
+    if str(value or "").strip()
+]
 FUYOURA_API_KEY = str(os.environ.get("FUYOURA_API_KEY") or _get("fuyoura_api_key", "") or "").strip()
 FUYOURA_BASE_URL = str(_get("fuyoura_base_url", "https://fuyoura.com/api/otp/v1") or "https://fuyoura.com/api/otp/v1").strip().rstrip("/")
 FUYOURA_COUNTRY = str(os.environ.get("FUYOURA_COUNTRY") or _get("fuyoura_country", "jpn") or "jpn").strip()
