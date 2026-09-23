@@ -42,7 +42,7 @@ class CoinApiApp(tk.Tk):
 
         cfg = self._load_config()
         self.xlsx_path = tk.StringVar(value=str(cfg.get("xlsx_path") or config.XLSX_PATH))
-        self.worker_count = tk.IntVar(value=int(cfg.get("worker_count") or 1))
+        self.worker_count = tk.IntVar(value=max(1, min(3, int(cfg.get("worker_count") or 1))))
         self.run_limit = tk.IntVar(value=int(cfg.get("run_limit") or 0))
         self.fuyoura_api_key = tk.StringVar(value=str(cfg.get("fuyoura_api_key") or config.FUYOURA_API_KEY))
         self.fuyoura_country = tk.StringVar(value=str(cfg.get("fuyoura_country") or config.FUYOURA_COUNTRY))
@@ -62,12 +62,24 @@ class CoinApiApp(tk.Tk):
                 return json.load(f)
         return {}
 
+    def _worker_count_value(self) -> int:
+        try:
+            value = int(self.worker_count.get() or 1)
+        except (tk.TclError, ValueError):
+            value = 1
+        return max(1, min(3, value))
+
+    def _clamp_worker_count(self, event=None) -> bool:
+        self.worker_count.set(self._worker_count_value())
+        return True
+
     def _save_config(self) -> None:
+        self._clamp_worker_count()
         cfg = self._load_config()
         cfg.update(
             {
                 "xlsx_path": self.xlsx_path.get().strip(),
-                "worker_count": max(1, int(self.worker_count.get() or 1)),
+                "worker_count": self._worker_count_value(),
                 "run_limit": max(0, int(self.run_limit.get() or 0)),
                 "fuyoura_api_key": self.fuyoura_api_key.get().strip(),
                 "fuyoura_country": self.fuyoura_country.get().strip(),
@@ -103,7 +115,20 @@ class CoinApiApp(tk.Tk):
         controls = ttk.Frame(settings)
         controls.grid(row=1, column=1, sticky="w", padx=8, pady=8)
         ttk.Label(settings, text="Worker").grid(row=1, column=0, sticky="w", pady=4)
-        ttk.Spinbox(controls, from_=1, to=50, textvariable=self.worker_count, width=10).pack(side="left")
+        worker_spinbox = ttk.Spinbox(
+            controls,
+            from_=1,
+            to=3,
+            textvariable=self.worker_count,
+            width=10,
+            command=self._clamp_worker_count,
+            validate="focusout",
+            validatecommand=(self.register(self._clamp_worker_count),),
+        )
+        worker_spinbox.pack(side="left")
+        worker_spinbox.bind("<FocusOut>", self._clamp_worker_count)
+        worker_spinbox.bind("<Leave>", self._clamp_worker_count)
+        worker_spinbox.bind("<Return>", self._clamp_worker_count)
         ttk.Label(controls, text="Limit").pack(side="left", padx=(24, 6))
         ttk.Spinbox(controls, from_=0, to=100000, textvariable=self.run_limit, width=10).pack(side="left")
 

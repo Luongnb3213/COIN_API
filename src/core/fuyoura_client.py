@@ -111,6 +111,7 @@ class FuyouraClient:
                 "Accept": "application/json",
             },
         )
+        self._delay_before_request(action)
         try:
             with urlopen(req, timeout=request_timeout) as response:
                 payload = json.load(response)
@@ -140,6 +141,14 @@ class FuyouraClient:
         if error and payload.get("orders") is None and "requested" not in payload and "activated" not in payload:
             raise FuyouraError(f"Fuyoura: {error}")
         return payload
+
+    @staticmethod
+    def _delay_before_request(action: str) -> None:
+        delay = float(getattr(config, "REQUEST_DELAY_SECONDS", 0) or 0)
+        if delay <= 0:
+            return
+        log.info("Fuyoura %s delay %.1fs trước request.", action, delay)
+        time.sleep(delay)
 
     def get_number(self) -> dict:
         """Thuê 1 số. Trả về {order, number(local), raw_number, price, expires_in}."""

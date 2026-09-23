@@ -1,4 +1,10 @@
 {
+  "_notes": {
+    "worker_count": "So worker chay song song. Tool tu gioi han tu 1 den 3, nhap hon 3 cung bi clamp ve 3.",
+    "request_delay_seconds": "Delay giua cac request chinh trong flow account. Hien khong ap dung cho buoc lay thong tin the PCARD/WebView/Paycierge.",
+    "max_accounts_per_proxy": "Moi worker giu 1 proxy va chay toi da so account nay truoc khi doi proxy.",
+    "proxy_rotation_rest_seconds": "Sau khi worker chay du max_accounts_per_proxy va release proxy, nghi so giay nay truoc khi boc proxy moi."
+  },
   "xlsx_path": "/Users/macbook/Downloads/coin_excel_lily.xlsx",
   "active_sheet": "Accounts",
   "worker_count": 1,
@@ -15,7 +21,10 @@
   "otp_wait_timeout": 120,
   "otp_poll_interval": 2,
   "use_proxy": true,
+  "request_delay_seconds": 0.4,
+  "max_accounts_per_proxy": 10,
+  "proxy_rotation_rest_seconds": 300,
   "proxy_failure_threshold": 3,
   "request_timeout": 30,
-  "account_cooldown_seconds": 30
+  "account_cooldown_seconds": 120
 }

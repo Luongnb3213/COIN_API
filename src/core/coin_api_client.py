@@ -4,6 +4,7 @@ import gzip
 import json
 import random
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from html import unescape
@@ -378,16 +379,29 @@ class CoinApiClient:
             if not gift_code:
                 continue
             log.info("[%s] Grant gift code #%s.", masked_phone, index)
-            self._post_json(
-                "/transactions/gift-codes/grant",
-                {"giftCode": gift_code},
-                bearer_token=bearer_token,
-                step_status=f"GIFT_CODE_{index}_FAILED",
-            )
+            try:
+                self._post_json(
+                    "/transactions/gift-codes/grant",
+                    {"giftCode": gift_code},
+                    bearer_token=bearer_token,
+                    step_status=f"GIFT_CODE_{index}_FAILED",
+                )
+            except CoinApiError as exc:
+                if self._is_gift_code_already_granted(exc):
+                    statuses[index - 1] = "ALREADY_GRANTED"
+                    progress(f"GIFT_CODE_{index}_ALREADY_GRANTED")
+                    log.info("[%s] Gift code #%s đã được付与済み, bỏ qua để tiếp tục lấy thẻ.", masked_phone, index)
+                    continue
+                raise
             statuses[index - 1] = "OK"
             progress(f"GIFT_CODE_{index}_OK")
             log.info("[%s] Gift code #%s OK.", masked_phone, index)
         return statuses[0], statuses[1]
+
+    @staticmethod
+    def _is_gift_code_already_granted(exc: CoinApiError) -> bool:
+        text = str(exc)
+        return exc.step_status.startswith("GIFT_CODE_") and "HTTP 422" in text and "付与済み" in text
 
     @staticmethod
     def _gift_codes_for_account(account: dict) -> list[str]:
@@ -408,6 +422,7 @@ class CoinApiClient:
             {"functionCode": "PCARD", "simpleAuthenticationCode": str(pin)},
             bearer_token=register_token,
             step_status="PCARD_PIN_VERIFY_FAILED",
+            request_delay=False,
         )
         pcard_token = self._pick(pin_data, "authenticationToken")
         if not pcard_token:
@@ -419,6 +434,7 @@ class CoinApiClient:
             "/authentications/pcard-webview-otp/issue",
             bearer_token=str(pcard_token),
             step_status="PCARD_WEBVIEW_OTP_FAILED",
+            request_delay=False,
         )
         otp_code = str(self._pick(otp_data, "otpCode") or "").strip()
         login_url = str(self._pick(otp_data, "pcardWebViewUrl") or "https://web.coinplus-prepaid.jp/login").strip()
@@ -443,6 +459,7 @@ class CoinApiClient:
             ),
             step_status="PCARD_WEBVIEW_LOGIN_FAILED",
             log_body=False,
+            request_delay=False,
         )
         if not 200 <= login_status < 300:
             raise CoinApiError("PCARD_WEBVIEW_LOGIN_FAILED", f"HTTP {login_status}: login webview thất bại.")
@@ -469,6 +486,7 @@ class CoinApiClient:
             ),
             step_status="PCARD_WEBVIEW_AUTH_FAILED",
             log_body=False,
+            request_delay=False,
         )
         if not 200 <= auth_status < 400:
             raise CoinApiError("PCARD_WEBVIEW_AUTH_FAILED", f"HTTP {auth_status}: authenticate webview thất bại.")
@@ -487,6 +505,7 @@ class CoinApiClient:
             ),
             step_status="PCARD_CARD_URL_FAILED",
             log_body=False,
+            request_delay=False,
         )
         if not 200 <= card_url_status < 300:
             raise CoinApiError("PCARD_CARD_URL_FAILED", f"HTTP {card_url_status}: getCardNum thất bại.")
@@ -504,6 +523,7 @@ class CoinApiClient:
             headers=self._paycierge_headers(),
             step_status="PCARD_CARD_HTML_FAILED",
             log_body=False,
+            request_delay=False,
         )
         if not 200 <= card_status < 300:
             raise CoinApiError("PCARD_CARD_HTML_FAILED", f"HTTP {card_status}: lấy HTML card thất bại.")
@@ -575,6 +595,7 @@ class CoinApiClient:
         bearer_token: str = "",
         step_status: str,
         update_cookie: bool = True,
+        request_delay: bool = True,
     ) -> dict[str, Any]:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         status_code, response_text = self._request(
@@ -584,25 +605,43 @@ class CoinApiClient:
             bearer_token=bearer_token,
             step_status=step_status,
             update_cookie=update_cookie,
+            request_delay=request_delay,
         )
         return self._parse_response(status_code, response_text, step_status)
 
-    def _get_json(self, path: str, *, bearer_token: str, step_status: str, update_cookie: bool = True) -> dict[str, Any]:
+    def _get_json(
+        self,
+        path: str,
+        *,
+        bearer_token: str,
+        step_status: str,
+        update_cookie: bool = True,
+        request_delay: bool = True,
+    ) -> dict[str, Any]:
         status_code, response_text = self._request(
             self._url(path),
             method="GET",
             bearer_token=bearer_token,
             step_status=step_status,
             update_cookie=update_cookie,
+            request_delay=request_delay,
         )
         return self._parse_response(status_code, response_text, step_status)
 
-    def _post_empty_json(self, path: str, *, bearer_token: str, step_status: str) -> dict[str, Any]:
+    def _post_empty_json(
+        self,
+        path: str,
+        *,
+        bearer_token: str,
+        step_status: str,
+        request_delay: bool = True,
+    ) -> dict[str, Any]:
         status_code, response_text = self._request(
             self._url(path),
             method="POST",
             bearer_token=bearer_token,
             step_status=step_status,
+            request_delay=request_delay,
         )
         return self._parse_response(status_code, response_text, step_status)
 
@@ -615,6 +654,7 @@ class CoinApiClient:
         step_status: str,
         body: bytes | None = None,
         log_body: bool = True,
+        request_delay: bool = True,
     ) -> tuple[int, str]:
         request = Request(url, data=body, headers=headers, method=method)
         label = self._web_log_label(url)
@@ -624,6 +664,8 @@ class CoinApiClient:
             log.info("WEB %s %s request body: %s", method, label, body.decode("utf-8", errors="replace"))
         else:
             log.info("WEB %s %s request body: <empty>", method, label)
+        if request_delay:
+            self._delay_before_request("WEB", method, label)
         try:
             opener = self.web_opener or build_opener(HTTPCookieProcessor(self.web_cookie_jar))
             with opener.open(request, timeout=config.REQUEST_TIMEOUT) as response:
@@ -789,6 +831,7 @@ class CoinApiClient:
         authorization_header: str = "",
         step_status: str,
         update_cookie: bool = True,
+        request_delay: bool = True,
     ) -> tuple[int, str]:
         headers = dict(self.headers)
         if body is None:
@@ -806,6 +849,8 @@ class CoinApiClient:
             log.info("HTTP %s %s request body: %s", method, label, body.decode("utf-8", errors="replace"))
         else:
             log.info("HTTP %s %s request body: <empty>", method, label)
+        if request_delay:
+            self._delay_before_request("HTTP", method, label)
         try:
             open_func = self.opener.open if self.opener is not None else urlopen
             with open_func(request, timeout=config.REQUEST_TIMEOUT) as response:
@@ -830,6 +875,14 @@ class CoinApiClient:
         except OSError as exc:
             log.warning("HTTP %s %s lỗi mạng: %s", method, label, exc)
             raise CoinApiError(step_status, f"NETWORK_ERROR: {exc}") from exc
+
+    @staticmethod
+    def _delay_before_request(kind: str, method: str, label: str) -> None:
+        delay = float(getattr(config, "REQUEST_DELAY_SECONDS", 0) or 0)
+        if delay <= 0:
+            return
+        log.info("%s %s %s delay %.1fs trước request.", kind, method, label, delay)
+        time.sleep(delay)
 
     @staticmethod
     def _parse_response(status_code: int, response_text: str, step_status: str) -> dict[str, Any]:

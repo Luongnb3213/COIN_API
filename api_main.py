@@ -47,7 +47,7 @@ def main(limit: int = 0) -> dict:
     for account in accounts:
         queue.put(account)
 
-    worker_count = max(1, min(int(config.WORKER_COUNT or 1), len(accounts)))
+    worker_count = max(1, min(3, int(config.WORKER_COUNT or 1), len(accounts)))
     log.info("Chạy COIN_API với %s worker.", worker_count)
 
     threads: list[threading.Thread] = []

@@ -115,6 +115,7 @@ class OTPBaseClient:
         self._check_cancelled()
         query = urlencode({"phone": normalize_phone(phone), **params})
         req = Request(f"{OTPBASE_OTP_URL}?{query}", headers={"x-api-key": self._api_key})
+        self._delay_before_request()
         try:
             with urlopen(req, timeout=request_timeout) as response:
                 data = json.load(response)
@@ -135,6 +136,14 @@ class OTPBaseClient:
         if not isinstance(data, dict) or data.get("ok") is not True:
             raise OTPBaseError("OTPBase không chấp nhận yêu cầu. Kiểm tra API key và quyền của số điện thoại.")
         return data
+
+    @staticmethod
+    def _delay_before_request() -> None:
+        delay = float(getattr(config, "REQUEST_DELAY_SECONDS", 0) or 0)
+        if delay <= 0:
+            return
+        log.info("OTPBase delay %.1fs trước request.", delay)
+        time.sleep(delay)
 
     def _otp(self, phone: str, *, request_timeout: float = 15.0, **params: int | str) -> dict:
         data = self._request(phone, request_timeout=request_timeout, **params)

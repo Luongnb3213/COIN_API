@@ -25,7 +25,7 @@ DATA_DIR.mkdir(exist_ok=True)
 
 XLSX_PATH = Path(str(_get("xlsx_path", ROOT_DIR / "COIN_API_template.xlsx"))).expanduser()
 ACTIVE_SHEET = str(_get("active_sheet", "Accounts")).strip() or "Accounts"
-WORKER_COUNT = max(1, int(_get("worker_count", 1) or 1))
+WORKER_COUNT = max(1, min(3, int(_get("worker_count", 1) or 1)))
 RUN_LIMIT = max(0, int(_get("run_limit", 0) or 0))
 
 COIN_BASE_URL = str(_get("coin_base_url", "https://tocapi.coinplus.jp")).rstrip("/")
@@ -35,6 +35,7 @@ COIN_DEVICE_ID = str(os.environ.get("COIN_DEVICE_ID") or _get("coin_device_id", 
 COIN_DEVICE_OS = str(os.environ.get("COIN_DEVICE_OS") or _get("coin_device_os", "") or "").strip()
 COIN_DEVICE_PROFILES_PATH = Path(str(_get("coin_device_profiles_path", ROOT_DIR / "coin_device_profiles.json"))).expanduser()
 REQUEST_TIMEOUT = max(5, int(_get("request_timeout", 30) or 30))
+REQUEST_DELAY_SECONDS = max(0.0, float(_get("request_delay_seconds", 0.4) or 0.0))
 ACCOUNT_COOLDOWN_SECONDS = max(0, int(_get("account_cooldown_seconds", 0) or 0))
 COIN_HTTP_HEADERS = dict(_get("coin_http_headers", {}) or {})
 COIN_GIFT_CODES = [
@@ -49,7 +50,8 @@ FUYOURA_PROJECT = str(os.environ.get("FUYOURA_PROJECT") or _get("fuyoura_project
 OTP_WAIT_TIMEOUT = max(5.0, float(_get("otp_wait_timeout", 120.0) or 120.0))
 OTP_POLL_INTERVAL = max(0.5, float(_get("otp_poll_interval", 2.0) or 2.0))
 USE_PROXY = bool(_get("use_proxy", True))
-MAX_ACCOUNTS_PER_PROXY = 1
+MAX_ACCOUNTS_PER_PROXY = max(1, int(_get("max_accounts_per_proxy", 10) or 10))
+PROXY_ROTATION_REST_SECONDS = max(0, int(_get("proxy_rotation_rest_seconds", 300) or 300))
 PROXY_FAILURE_THRESHOLD = max(1, int(_get("proxy_failure_threshold", 3) or 3))
 PROXY_CIRCUIT_OPEN = False
 PROXY_CIRCUIT_REASON = ""
