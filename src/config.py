@@ -42,10 +42,7 @@ COIN_GIFT_CODES = [
     for value in (_get("gift_codes", []) or [])
     if str(value or "").strip()
 ]
-FUYOURA_API_KEY = str(os.environ.get("FUYOURA_API_KEY") or _get("fuyoura_api_key", "") or "").strip()
-FUYOURA_BASE_URL = str(_get("fuyoura_base_url", "https://fuyoura.com/api/otp/v1") or "https://fuyoura.com/api/otp/v1").strip().rstrip("/")
-FUYOURA_COUNTRY = str(os.environ.get("FUYOURA_COUNTRY") or _get("fuyoura_country", "japan") or "japan").strip()
-FUYOURA_PROJECT = str(os.environ.get("FUYOURA_PROJECT") or _get("fuyoura_project", "70035") or "70035").strip()
+OTPBASE_API_KEY = str(os.environ.get("OTPBASE_API_KEY") or _get("otpbase_api_key", "") or "").strip()
 OTP_WAIT_TIMEOUT = max(5.0, float(_get("otp_wait_timeout", 120.0) or 120.0))
 OTP_POLL_INTERVAL = max(0.5, float(_get("otp_poll_interval", 2.0) or 2.0))
 USE_PROXY = bool(_get("use_proxy", True))

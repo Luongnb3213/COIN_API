@@ -16,7 +16,7 @@ from urllib.parse import urlencode, urljoin, urlparse
 from urllib.request import HTTPCookieProcessor, ProxyHandler, Request, build_opener, urlopen
 
 from src import config
-from src.core.fuyoura_client import FuyouraClient, FuyouraError
+from src.core.otpbase_client import OTPBaseClient, OTPBaseError
 from src.utils.logger import get_logger
 from src.utils.proxy_health import urllib_proxy_url
 
@@ -228,25 +228,15 @@ class CoinApiClient:
     def register_account(self, account: dict, progress) -> CoinRegisterResult:
         payload = build_register_payload(account)
         self._validate_account(account, payload)
-        log.info("Bắt đầu flow register (Fuyoura thuê số).")
+        log.info("Bắt đầu flow register (OTPBase).")
         otp_client = self._otp_client()
-
-        # Fuyoura cấp số điện thoại (rent-a-number): số do Fuyoura trả về, không
-        # lấy từ Excel. Phải thuê số trước khi gọi SMS request.
-        try:
-            rented = otp_client.get_number()
-        except FuyouraError as exc:
-            raise CoinApiError("SMS_REQUEST_FAILED", f"FUYOURA_ERROR: {exc}") from exc
-        order_id = rented["order"]
-        payload["phoneNumber"] = rented["number"]
         masked_phone = mask_phone(payload["phoneNumber"])
-        log.info(
-            "[%s] Fuyoura cấp số (order=%s, country=%s, project=%s).",
-            masked_phone,
-            order_id,
-            config.FUYOURA_COUNTRY,
-            config.FUYOURA_PROJECT,
-        )
+
+        try:
+            otp_cursor = otp_client.capture_cursor(payload["phoneNumber"])
+        except OTPBaseError as exc:
+            raise CoinApiError("SMS_REQUEST_FAILED", f"OTPBASE_ERROR: {exc}") from exc
+        log.info("[%s] OTPBase đã chốt mốc SMS trước khi request OTP.", masked_phone)
 
         self._prepare_sms_session(masked_phone)
 
@@ -262,18 +252,12 @@ class CoinApiClient:
             if not sms_authentication_id:
                 raise CoinApiError("SMS_REQUEST_FAILED", "API không trả về smsAuthenticationId.")
             progress("SMS_REQUEST_OK")
-            log.info("[%s] SMS request OK, smsAuthenticationId=%s, chờ Fuyoura lấy mã.", masked_phone, sms_authentication_id)
+            log.info("[%s] SMS request OK, smsAuthenticationId=%s, chờ OTPBase lấy mã.", masked_phone, sms_authentication_id)
 
-            otp_code = otp_client.wait_for_code(order_id)
-        except FuyouraError as exc:
-            # Chưa có mã -> trả số về cho Fuyoura (không bị tính phí).
-            otp_client.safe_cancel(order_id)
-            raise CoinApiError("SMS_VERIFY_FAILED", f"FUYOURA_ERROR: {exc}") from exc
-        except BaseException:
-            # SMS request lỗi / bị dừng trước khi có mã -> trả số về.
-            otp_client.safe_cancel(order_id)
-            raise
-        log.info("[%s] Fuyoura đã lấy được OTP: %s", masked_phone, otp_code)
+            otp_code = otp_client.wait_for_otp(payload["phoneNumber"], otp_cursor)
+        except OTPBaseError as exc:
+            raise CoinApiError("SMS_VERIFY_FAILED", f"OTPBASE_ERROR: {exc}") from exc
+        log.info("[%s] OTPBase đã lấy được OTP: %s", masked_phone, otp_code)
         log.info(
             "[%s] Verify SMS OTP payload: smsAuthenticationCode=%s smsAuthenticationId=%s",
             masked_phone,
@@ -365,16 +349,29 @@ class CoinApiClient:
             if not gift_code:
                 continue
             log.info("[%s] Grant gift code #%s.", masked_phone, index)
-            self._post_json(
-                "/transactions/gift-codes/grant",
-                {"giftCode": gift_code},
-                bearer_token=bearer_token,
-                step_status=f"GIFT_CODE_{index}_FAILED",
-            )
+            try:
+                self._post_json(
+                    "/transactions/gift-codes/grant",
+                    {"giftCode": gift_code},
+                    bearer_token=bearer_token,
+                    step_status=f"GIFT_CODE_{index}_FAILED",
+                )
+            except CoinApiError as exc:
+                if self._is_gift_code_already_granted(exc):
+                    statuses[index - 1] = "ALREADY_GRANTED"
+                    progress(f"GIFT_CODE_{index}_ALREADY_GRANTED")
+                    log.info("[%s] Gift code #%s đã được付与済み, bỏ qua để tiếp tục lấy thẻ.", masked_phone, index)
+                    continue
+                raise
             statuses[index - 1] = "OK"
             progress(f"GIFT_CODE_{index}_OK")
             log.info("[%s] Gift code #%s OK.", masked_phone, index)
         return statuses[0], statuses[1]
+
+    @staticmethod
+    def _is_gift_code_already_granted(exc: CoinApiError) -> bool:
+        text = str(exc)
+        return exc.step_status.startswith("GIFT_CODE_") and "HTTP 422" in text and "付与済み" in text
 
     @staticmethod
     def _gift_codes_for_account(account: dict) -> list[str]:
@@ -508,14 +505,11 @@ class CoinApiClient:
         return card_info
 
     @staticmethod
-    def _otp_client() -> FuyouraClient:
-        return FuyouraClient(
-            config.FUYOURA_API_KEY,
+    def _otp_client() -> OTPBaseClient:
+        return OTPBaseClient(
+            config.OTPBASE_API_KEY,
             timeout=config.OTP_WAIT_TIMEOUT,
             poll_interval=config.OTP_POLL_INTERVAL,
-            base_url=config.FUYOURA_BASE_URL,
-            country=config.FUYOURA_COUNTRY,
-            project=config.FUYOURA_PROJECT,
         )
 
     def _prepare_sms_session(self, masked_phone: str) -> None:
@@ -880,9 +874,8 @@ class CoinApiClient:
 
     @staticmethod
     def _validate_account(account: dict, payload: dict[str, Any]) -> None:
-        # Không còn yêu cầu "phoneNumber": số điện thoại do Fuyoura cấp ở bước
-        # get_number() trong register_account, không lấy từ Excel.
         required = [
+            "phoneNumber",
             "password",
             "katakanaFirstName",
             "katakanaLastName",
@@ -899,16 +892,10 @@ class CoinApiClient:
                 final_status="FAIL_NO_RETRY",
             )
 
-        if not config.FUYOURA_API_KEY:
+        if not config.OTPBASE_API_KEY:
             raise CoinApiError(
                 "SMS_VERIFY_FAILED",
-                "Chưa cấu hình fuyoura_api_key để tự thuê số & lấy OTP.",
-                final_status="FAIL_NO_RETRY",
-            )
-        if not config.FUYOURA_PROJECT:
-            raise CoinApiError(
-                "SMS_VERIFY_FAILED",
-                "Chưa cấu hình fuyoura_project (mã project của docking).",
+                "Chưa cấu hình otpbase_api_key để lấy OTP.",
                 final_status="FAIL_NO_RETRY",
             )
 

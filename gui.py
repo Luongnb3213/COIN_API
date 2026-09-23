@@ -44,9 +44,7 @@ class CoinApiApp(tk.Tk):
         self.xlsx_path = tk.StringVar(value=str(cfg.get("xlsx_path") or config.XLSX_PATH))
         self.worker_count = tk.IntVar(value=int(cfg.get("worker_count") or 1))
         self.run_limit = tk.IntVar(value=int(cfg.get("run_limit") or 0))
-        self.fuyoura_api_key = tk.StringVar(value=str(cfg.get("fuyoura_api_key") or config.FUYOURA_API_KEY))
-        self.fuyoura_country = tk.StringVar(value=str(cfg.get("fuyoura_country") or config.FUYOURA_COUNTRY))
-        self.fuyoura_project = tk.StringVar(value=str(cfg.get("fuyoura_project") or config.FUYOURA_PROJECT))
+        self.otpbase_api_key = tk.StringVar(value=str(cfg.get("otpbase_api_key") or config.OTPBASE_API_KEY))
         self.use_proxy = tk.BooleanVar(value=bool(cfg.get("use_proxy", config.USE_PROXY)))
 
         self._install_log_handler()
@@ -69,9 +67,7 @@ class CoinApiApp(tk.Tk):
                 "xlsx_path": self.xlsx_path.get().strip(),
                 "worker_count": max(1, int(self.worker_count.get() or 1)),
                 "run_limit": max(0, int(self.run_limit.get() or 0)),
-                "fuyoura_api_key": self.fuyoura_api_key.get().strip(),
-                "fuyoura_country": self.fuyoura_country.get().strip(),
-                "fuyoura_project": self.fuyoura_project.get().strip(),
+                "otpbase_api_key": self.otpbase_api_key.get().strip(),
                 "use_proxy": bool(self.use_proxy.get()),
             }
         )
@@ -81,9 +77,7 @@ class CoinApiApp(tk.Tk):
         config.XLSX_PATH = Path(cfg["xlsx_path"]).expanduser()
         config.WORKER_COUNT = cfg["worker_count"]
         config.RUN_LIMIT = cfg["run_limit"]
-        config.FUYOURA_API_KEY = cfg["fuyoura_api_key"]
-        config.FUYOURA_COUNTRY = cfg["fuyoura_country"]
-        config.FUYOURA_PROJECT = cfg["fuyoura_project"]
+        config.OTPBASE_API_KEY = cfg["otpbase_api_key"]
         config.USE_PROXY = cfg["use_proxy"]
 
     def _build_ui(self) -> None:
@@ -107,18 +101,10 @@ class CoinApiApp(tk.Tk):
         ttk.Label(controls, text="Limit").pack(side="left", padx=(24, 6))
         ttk.Spinbox(controls, from_=0, to=100000, textvariable=self.run_limit, width=10).pack(side="left")
 
-        ttk.Label(settings, text="Fuyoura API key").grid(row=2, column=0, sticky="w", pady=4)
-        ttk.Entry(settings, textvariable=self.fuyoura_api_key).grid(row=2, column=1, columnspan=2, sticky="ew", padx=8)
+        ttk.Label(settings, text="OTPBase API key").grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Entry(settings, textvariable=self.otpbase_api_key).grid(row=2, column=1, columnspan=2, sticky="ew", padx=8)
 
-        ttk.Label(settings, text="Fuyoura country/project").grid(row=3, column=0, sticky="w", pady=4)
-        fuyoura_line = ttk.Frame(settings)
-        fuyoura_line.grid(row=3, column=1, columnspan=2, sticky="w", padx=8, pady=4)
-        ttk.Label(fuyoura_line, text="Country").pack(side="left")
-        ttk.Entry(fuyoura_line, textvariable=self.fuyoura_country, width=12).pack(side="left", padx=(6, 18))
-        ttk.Label(fuyoura_line, text="Project").pack(side="left")
-        ttk.Entry(fuyoura_line, textvariable=self.fuyoura_project, width=12).pack(side="left", padx=6)
-
-        ttk.Checkbutton(settings, text="Dùng proxy trong sheet Proxies", variable=self.use_proxy).grid(row=4, column=1, sticky="w", padx=8, pady=4)
+        ttk.Checkbutton(settings, text="Dùng proxy trong sheet Proxies", variable=self.use_proxy).grid(row=3, column=1, sticky="w", padx=8, pady=4)
 
         actions = ttk.Frame(root)
         actions.grid(row=1, column=0, sticky="ew", pady=10)
